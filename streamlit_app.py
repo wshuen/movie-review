@@ -142,38 +142,57 @@ def preprocess_text(text):
 # --------------------------
 # Streamlit GUI
 # --------------------------
-st.title("Movie Review Sentiment Analysis")
-st.write("Enter a movie review to see if it's Positive or Negative.")
 
-user_input = st.text_area("Enter your review here:")
+# 🎬 Centered Title
+st.markdown(
+    "<h2 style='text-align: center;'><b>🎬 Movie Review Sentiment Analysis</b></h2>",
+    unsafe_allow_html=True
+)
+st.markdown(
+    "<p style='text-align: center;'>Type a movie review below to predict if it's Positive or Negative.</p>",
+    unsafe_allow_html=True
+)
 
-if st.button("Predict"):
+# 💬 Input Field
+user_input = st.text_area(
+    "💬 Enter your review:",
+    placeholder="E.g., This movie was fantastic! The acting was brilliant..."
+)
+
+# 🔮 Predict Button
+predict_btn = st.button("🔮 Predict Sentiment")
+
+if predict_btn:
     if user_input.strip() == "":
-        st.warning("Please enter a review!")
+        st.markdown(
+            """
+            <div style="background-color:#fff3cd;padding:20px;border-radius:10px;border: 1px solid #ffeeba;">
+                <h3 style="color:#856404;">⚠️ Please enter a review!</h3>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
     else:
-        # Preprocess input (use the function you defined above)
+        # --------------------------
+        # Preprocessing + Prediction
+        # --------------------------
         cleaned_input = preprocess_text(user_input)
-
-        # Convert to TF-IDF using the loaded vectorizer
         vector_input = vectorizer.transform([cleaned_input])
-
-        # Predict sentiment using the loaded model
         prediction = model.predict(vector_input)[0]
-
-        # 🔹 Get decision score (distance from boundary)
         decision_score = model.decision_function(vector_input)[0]
 
-        # 🔹 Convert to confidence percentage (sigmoid mapping)
-        import numpy as np
+        # Confidence Score
         confidence = 1 / (1 + np.exp(-abs(decision_score))) * 100
 
-        # Display result with confidence
+        # --------------------------
+        # Result Box
+        # --------------------------
         if prediction == 1:
             st.markdown(
                 f"""
-                <div style="background-color:#d4edda;padding:15px;border-radius:5px;">
-                    <b>Sentiment:</b> Positive 🙂 <br>
-                    <b>Confidence:</b> {confidence:.2f}%
+                <div style="background-color:#d4edda;padding:20px;border-radius:10px;border: 1px solid #28a745;">
+                    <h3 style="color:#155724;">✅ Sentiment: Positive 🙂</h3>
+                    <p style="font-size:16px;">Confidence: <b>{confidence:.2f}%</b></p>
                 </div>
                 """,
                 unsafe_allow_html=True
@@ -181,13 +200,25 @@ if st.button("Predict"):
         else:
             st.markdown(
                 f"""
-                <div style="background-color:#f8d7da;padding:15px;border-radius:5px;">
-                    <b>Sentiment:</b> Negative 🙁 <br>
-                    <b>Confidence:</b> {confidence:.2f}%
+                <div style="background-color:#f8d7da;padding:20px;border-radius:10px;border: 1px solid #dc3545;">
+                    <h3 style="color:#721c24;">❌ Sentiment: Negative 🙁</h3>
+                    <p style="font-size:16px;">Confidence: <b>{confidence:.2f}%</b></p>
                 </div>
                 """,
                 unsafe_allow_html=True
             )
+
+# --------------------------
+# Sidebar Info
+# --------------------------
+st.sidebar.header("📊 About")
+st.sidebar.write(
+    "This app uses an **SVM model** trained on movie reviews.\n\n"
+    "Enter any movie review and get an instant prediction of its sentiment "
+    "(Positive / Negative) along with a confidence score."
+)
+
+
 
 
 
