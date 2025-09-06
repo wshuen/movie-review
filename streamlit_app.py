@@ -1,4 +1,5 @@
 import streamlit as st
+import numpy as np
 import joblib
 import re, string
 import nltk
@@ -159,9 +160,35 @@ if st.button("Predict"):
         # Predict sentiment using the loaded model
         prediction = model.predict(vector_input)[0]
 
+        # 🔹 Get decision score (distance from boundary)
+        decision_score = model.decision_function(vector_input)[0]
+
+        # 🔹 Convert to confidence percentage (sigmoid mapping)
+        import numpy as np
+        confidence = 1 / (1 + np.exp(-abs(decision_score))) * 100
+
+        # Display result with confidence
         if prediction == 1:
-            st.success("Sentiment: Positive 🙂")  
+            st.markdown(
+                f"""
+                <div style="background-color:#d4edda;padding:15px;border-radius:5px;">
+                    <b>Sentiment:</b> Positive 🙂 <br>
+                    <b>Confidence:</b> {confidence:.2f}%
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
         else:
-            st.error("Sentiment: Negative 🙁")   
+            st.markdown(
+                f"""
+                <div style="background-color:#f8d7da;padding:15px;border-radius:5px;">
+                    <b>Sentiment:</b> Negative 🙁 <br>
+                    <b>Confidence:</b> {confidence:.2f}%
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+
 
 
