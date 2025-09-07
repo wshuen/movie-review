@@ -14,8 +14,8 @@ from nltk.metrics import BigramAssocMeasures
 # -------------------------------
 # Load model & vectorizer
 # -------------------------------
-model = joblib.load("svm_tfidf_80_20_model.joblib")
-vectorizer = joblib.load("tfidf_vectorizer_80_20.joblib")
+model = joblib.load("lr_tfidf_80_20_model.joblib")
+vectorizer = joblib.load("tfidf_vectorizer.joblib")
 
 # -------------------------------
 # NLTK setup
