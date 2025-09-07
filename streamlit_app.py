@@ -10,6 +10,7 @@ from nltk.stem import WordNetLemmatizer
 from nltk import pos_tag
 from nltk.collocations import BigramCollocationFinder
 from nltk.metrics import BigramAssocMeasures
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 # -------------------------------
 # Load model & vectorizer
@@ -32,22 +33,25 @@ nltk.download("averaged_perceptron_tagger_eng")
 stop_words = set(stopwords.words("english"))
 lemmatizer = WordNetLemmatizer()
 
+# --- Lexicon override for tricky words ---
+LEXICON_BOOST = {
+    "interesting": "positive_override",
+    "okay": "neutral_override",
+    "decent": "positive_override",
+    "mediocre": "negative_override"
+}
+
 # --- POS tag converter (map NLTK POS → WordNet POS) ---
 def get_wordnet_pos(tag):
-    if tag.startswith("J"):
-        return wordnet.ADJ
-    elif tag.startswith("V"):
-        return wordnet.VERB
-    elif tag.startswith("N"):
-        return wordnet.NOUN
-    elif tag.startswith("R"):
-        return wordnet.ADV
-    else:
-        return wordnet.NOUN   # Default to noun
+    if tag.startswith("J"): return wordnet.ADJ
+    elif tag.startswith("V"): return wordnet.VERB
+    elif tag.startswith("N"): return wordnet.NOUN
+    elif tag.startswith("R"): return wordnet.ADV
+    else: return wordnet.NOUN  # Default to noun
 
 # --- Replace rating patterns ---
 def replace_ratings(text):
-    # Handle n/n patterns (e.g., 7/8, 10/10, 2/5)
+    # Case 1: n/n patterns (7/10, 2/5)
     def convert_fraction(match):
         num, denom = match.group().split("/")
         num, denom = int(num), int(denom)
@@ -58,10 +62,9 @@ def replace_ratings(text):
             elif percent <= 75: return " good "
             else: return " excellent "
         return ""
-    
     text = re.sub(r"\b\d+/\d+\b", convert_fraction, text)
 
-    # Handle star ratings (with/without space, assume max 5)
+    # Case 2: star ratings (e.g., 4 stars, 5 star)
     def convert_stars(match):
         num = int(match.group(1))
         percent = (num / 5) * 100
@@ -69,33 +72,27 @@ def replace_ratings(text):
         elif percent <= 50: return " poor "
         elif percent <= 75: return " good "
         else: return " excellent "
-    
-    text = re.sub(r"(\d+)\s*stars?", convert_stars, text, flags=re.IGNORECASE)                            
+    text = re.sub(r"(\d+)\s*stars?", convert_stars, text, flags=re.IGNORECASE)
 
-    # Handle percentages (e.g., 100%)
+    # Case 3: percentages (e.g., 85%)
     def convert_percent(match):
         num = int(match.group(1))
-        percent = num
-        if percent <= 25: return " terrible "
-        elif percent <= 50: return " poor "
-        elif percent <= 75: return " good "
+        if num <= 25: return " terrible "
+        elif num <= 50: return " poor "
+        elif num <= 75: return " good "
         else: return " excellent "
-    
     text = re.sub(r"(\d+)%", convert_percent, text)
+
     return text
 
 # --- Bigram extraction function ---
 def extract_bigrams(tokens, top_n=20):
-    """
-    Extract top N bigrams from a list of tokens and return as compound tokens.
-    """
+    """Extract top N bigrams from tokens and return as compound tokens."""
     bigram_finder = BigramCollocationFinder.from_words(tokens)
     bigram_measures = BigramAssocMeasures()
-    top_bigrams = bigram_finder.nbest(bigram_measures.pmi, top_n)  # Use PMI to find collocations
+    top_bigrams = bigram_finder.nbest(bigram_measures.pmi, top_n)
     bigram_tokens = ['_'.join(bigram) for bigram in top_bigrams]
-    # Combine unigrams and bigrams
-    tokens_with_bigrams = tokens + bigram_tokens
-    return tokens_with_bigrams
+    return tokens + bigram_tokens  # combine unigrams + bigrams
 
 # --- Full Preprocessing Function ---
 def preprocess_text(text):
@@ -104,36 +101,39 @@ def preprocess_text(text):
 
     # 2. Replace ratings
     text = replace_ratings(text)
-    
-    # 3. Remove HTML tags (replace with space)
+
+    # 3. Remove HTML
     text = BeautifulSoup(text, "html.parser").get_text(separator=" ")
-    
-    # 4. Remove URLs (replace with space)
-    text = re.sub(r"http\S+|www\S+", " ", text)                                                         
-    
-    # 5. Remove punctuation (replace with space instead of deleting)
+
+    # 4. Remove URLs
+    text = re.sub(r"http\S+|www\S+", " ", text)
+
+    # 5. Remove punctuation
     text = re.sub(f"[{re.escape(string.punctuation)}]", " ", text)
-    
-    # First cleanup: remove extra spaces
-    text = re.sub(r"\s+", " ", text).strip()
-    
+
     # 6. Remove numbers
     text = re.sub(r"\d+", "", text)
 
     # 7. Tokenization
     tokens = word_tokenize(text)
 
-    # 8. Stopword removal
-    tokens = [word for word in tokens if word not in stop_words]
+    # 8. Remove stopwords (keep negations)
+    negations = {"not", "no", "never"}
+    tokens = [w for w in tokens if (w not in stop_words or w in negations)]
 
     # 9. Lemmatization with POS tagging
-    pos_tags = pos_tag(tokens)  # [('mentioned', 'VBD'), ('movie', 'NN'), ...]
+    pos_tags = pos_tag(tokens)
     tokens = [lemmatizer.lemmatize(word, get_wordnet_pos(tag)) for word, tag in pos_tags]
 
-    # 10. Bigram extraction
+    # 10. Lexicon override (add bias tokens)
+    for token in list(tokens):  # use list() to avoid modifying while iterating
+        if token in LEXICON_BOOST:
+            tokens.append(LEXICON_BOOST[token])
+
+    # 11. Bigram extraction
     tokens = extract_bigrams(tokens, top_n=20)
 
-    # 11. Final cleanup (remove extra spaces)
+    # 12. Final cleanup
     text = " ".join(tokens)
     text = re.sub(r"\s+", " ", text).strip()
 
@@ -213,11 +213,13 @@ if predict_btn:
 # --------------------------
 st.sidebar.header("📊 About")
 st.sidebar.write(
-    "This app uses an **SVM model** trained on movie reviews.\n\n"
-    "Enter any movie review and get an instant prediction of its sentiment "
-    "(Positive / Negative) along with a confidence score."
-)
+    """
+    This app uses an **Logistic Regression model** trained on movie reviews.
 
+    Enter any movie review and get an instant prediction of its sentiment 
+    (**Positive / Negative**) along with a confidence score.
+    """
+)
 
 
 
