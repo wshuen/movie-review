@@ -43,15 +43,20 @@ LEXICON_BOOST = {
 
 # --- POS tag converter (map NLTK POS → WordNet POS) ---
 def get_wordnet_pos(tag):
-    if tag.startswith("J"): return wordnet.ADJ
-    elif tag.startswith("V"): return wordnet.VERB
-    elif tag.startswith("N"): return wordnet.NOUN
-    elif tag.startswith("R"): return wordnet.ADV
-    else: return wordnet.NOUN  # Default to noun
+    if tag.startswith("J"):
+        return wordnet.ADJ
+    elif tag.startswith("V"):
+        return wordnet.VERB
+    elif tag.startswith("N"):
+        return wordnet.NOUN
+    elif tag.startswith("R"):
+        return wordnet.ADV
+    else:
+        return wordnet.NOUN   # Default to noun
 
 # --- Replace rating patterns ---
 def replace_ratings(text):
-    # Case 1: n/n patterns (7/10, 2/5)
+    # Handle n/n patterns (e.g., 7/8, 10/10, 2/5)
     def convert_fraction(match):
         num, denom = match.group().split("/")
         num, denom = int(num), int(denom)
@@ -62,9 +67,10 @@ def replace_ratings(text):
             elif percent <= 75: return " good "
             else: return " excellent "
         return ""
+    
     text = re.sub(r"\b\d+/\d+\b", convert_fraction, text)
 
-    # Case 2: star ratings (e.g., 4 stars, 5 star)
+    # Handle star ratings (with/without space, assume max 5)
     def convert_stars(match):
         num = int(match.group(1))
         percent = (num / 5) * 100
@@ -72,27 +78,33 @@ def replace_ratings(text):
         elif percent <= 50: return " poor "
         elif percent <= 75: return " good "
         else: return " excellent "
-    text = re.sub(r"(\d+)\s*stars?", convert_stars, text, flags=re.IGNORECASE)
+    
+    text = re.sub(r"(\d+)\s*stars?", convert_stars, text, flags=re.IGNORECASE)                            
 
-    # Case 3: percentages (e.g., 85%)
+    # Handle percentages (e.g., 100%)
     def convert_percent(match):
         num = int(match.group(1))
-        if num <= 25: return " terrible "
-        elif num <= 50: return " poor "
-        elif num <= 75: return " good "
+        percent = num
+        if percent <= 25: return " terrible "
+        elif percent <= 50: return " poor "
+        elif percent <= 75: return " good "
         else: return " excellent "
+    
     text = re.sub(r"(\d+)%", convert_percent, text)
-
     return text
 
 # --- Bigram extraction function ---
 def extract_bigrams(tokens, top_n=20):
-    """Extract top N bigrams from tokens and return as compound tokens."""
+    """
+    Extract top N bigrams from a list of tokens and return as compound tokens.
+    """
     bigram_finder = BigramCollocationFinder.from_words(tokens)
     bigram_measures = BigramAssocMeasures()
-    top_bigrams = bigram_finder.nbest(bigram_measures.pmi, top_n)
+    top_bigrams = bigram_finder.nbest(bigram_measures.pmi, top_n)  # Use PMI to find collocations
     bigram_tokens = ['_'.join(bigram) for bigram in top_bigrams]
-    return tokens + bigram_tokens  # combine unigrams + bigrams
+    # Combine unigrams and bigrams
+    tokens_with_bigrams = tokens + bigram_tokens
+    return tokens_with_bigrams
 
 # --- Full Preprocessing Function ---
 def preprocess_text(text):
@@ -101,43 +113,41 @@ def preprocess_text(text):
 
     # 2. Replace ratings
     text = replace_ratings(text)
-
-    # 3. Remove HTML
+    
+    # 3. Remove HTML tags (replace with space)
     text = BeautifulSoup(text, "html.parser").get_text(separator=" ")
-
-    # 4. Remove URLs
-    text = re.sub(r"http\S+|www\S+", " ", text)
-
-    # 5. Remove punctuation
+    
+    # 4. Remove URLs (replace with space)
+    text = re.sub(r"http\S+|www\S+", " ", text)                                                         
+    
+    # 5. Remove punctuation (replace with space instead of deleting)
     text = re.sub(f"[{re.escape(string.punctuation)}]", " ", text)
-
+    
+    # First cleanup: remove extra spaces
+    text = re.sub(r"\s+", " ", text).strip()
+    
     # 6. Remove numbers
     text = re.sub(r"\d+", "", text)
 
     # 7. Tokenization
     tokens = word_tokenize(text)
 
-    # 8. Remove stopwords (keep negations)
-    negations = {"not", "no", "never"}
-    tokens = [w for w in tokens if (w not in stop_words or w in negations)]
+    # 8. Stopword removal
+    tokens = [word for word in tokens if word not in stop_words]
 
     # 9. Lemmatization with POS tagging
-    pos_tags = pos_tag(tokens)
+    pos_tags = pos_tag(tokens)  # [('mentioned', 'VBD'), ('movie', 'NN'), ...]
     tokens = [lemmatizer.lemmatize(word, get_wordnet_pos(tag)) for word, tag in pos_tags]
 
-    # 10. Lexicon override (add bias tokens)
-    for token in list(tokens):  # use list() to avoid modifying while iterating
-        if token in LEXICON_BOOST:
-            tokens.append(LEXICON_BOOST[token])
-
-    # 11. Bigram extraction
+    # 10. Bigram extraction
     tokens = extract_bigrams(tokens, top_n=20)
 
-    # 12. Final cleanup
+    # 11. Final cleanup (remove extra spaces)
     text = " ".join(tokens)
     text = re.sub(r"\s+", " ", text).strip()
 
     return text
+
 
 # --------------------------
 # Streamlit GUI
