@@ -153,16 +153,17 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# 💬 Input Field
-user_input = st.text_area(
-    "💬 Enter your review:",
-    placeholder="E.g., This movie was fantastic! The acting was brilliant..."
-)
+# --------------------------
+# Input Form
+# --------------------------
+with st.form(key="review_form"):
+    user_input = st.text_area(
+        "💬 Enter your review:",
+        placeholder="E.g., This movie was fantastic! The acting was brilliant..."
+    )
+    submit_btn = st.form_submit_button("🔮 Predict Sentiment")
 
-# 🔮 Predict Button
-predict_btn = st.button("🔮 Predict Sentiment")
-
-if predict_btn:
+if submit_btn:
     if user_input.strip() == "":
         st.markdown(
             """
